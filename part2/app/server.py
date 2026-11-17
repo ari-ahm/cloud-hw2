@@ -40,9 +40,9 @@ def serve(host: str, port: int, data_dir: str) -> None:
                         raise ValueError("invalid body length")
                     payload = json.loads(self.rfile.read(size))
                     if not isinstance(payload, dict):
-                        raise ValueError("expected object")
+                        raise TypeError("expected object")
                     ticket = join(path, payload.get("name"))
-                except (ValueError, UnicodeError):
+                except (ValueError, TypeError, UnicodeError):
                     self.reply(400, "invalid name")
                 else:
                     self.reply(200, str(ticket))

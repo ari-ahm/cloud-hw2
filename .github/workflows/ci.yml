@@ -1,0 +1,137 @@
+name: CI
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install ruff==0.17.5
+      - run: ruff check part2/app/
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: part2/Dockerfile
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - working-directory: part2
+        run: |
+          python -m pip install -r requirements-dev.txt
+          pytest
+  build:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          version="v$(git show -s --format=%cd --date=format-local:%Y%m%d%H%M%S HEAD)-$(git rev-parse --short=12 HEAD)"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+        env:
+          TZ: UTC
+      - run: |
+          docker build -t lab-queue:build part2
+          docker save -o /tmp/lab-queue.tar lab-queue:build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: queue-image
+          path: /tmp/lab-queue.tar
+          retention-days: 1
+  push:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: queue-image
+          path: /tmp
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: |
+          image="ghcr.io/${OWNER,,}/lab-queue"
+          docker load -i /tmp/lab-queue.tar
+          docker tag lab-queue:build "$image:$VERSION"
+          docker tag lab-queue:build "$image:latest"
+          docker push "$image:$VERSION"
+          docker push "$image:latest"
+        env:
+          OWNER: ${{ github.repository_owner }}
+          VERSION: ${{ needs.build.outputs.version }}
+  pages:
+    needs: [build, push]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: pages-publication
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          path = Path('part2/site/index.html')
+          text = path.read_text()
+          assert text.count('__VERSION__') == 1
+          path.write_text(text.replace('__VERSION__', os.environ['VERSION']))
+          PY
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: part2/site/
+      - id: deploy
+        uses: actions/deploy-pages@v4
+  tag:
+    needs: [build, push, pages]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: |
+          if git show-ref --verify --quiet "refs/tags/$VERSION"; then
+            test "$(git rev-parse "$VERSION^{commit}")" = "$GITHUB_SHA"
+            test "$(git cat-file -t "refs/tags/$VERSION")" = tag
+          else
+            git -c user.name='arian ahmidi' -c user.email='arian.ahmidi@gmail.com' \
+              tag -a "$VERSION" "$GITHUB_SHA" -m "Release $VERSION, commit $GITHUB_SHA"
+            git push origin "refs/tags/$VERSION"
+          fi
+        env:
+          VERSION: ${{ needs.build.outputs.version }}

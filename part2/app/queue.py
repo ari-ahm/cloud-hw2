@@ -1,29 +1,26 @@
-"""Queue stored as one name per line.
-
-The HTTP server must call these functions. Tests call them directly,
-with a temporary directory, and do not start Docker.
-"""
-
-from __future__ import annotations
+"""File queue, initially without synchronization for the race experiment."""
 
 from pathlib import Path
 
 
 def join(path: str | Path, name: str) -> int:
-    """Append one person and return the ticket number.
-
-    The ticket number is how many names are in the file after this join.
-    Strip spaces around the name before storing it.
-    Raise ValueError, and do not create or change the file, when the
-    stripped name is empty, longer than 40 characters, or the original
-    name contains a newline.
-    """
-    raise NotImplementedError("TODO: append a line and return the ticket number")
+    if not isinstance(name, str) or "\n" in name or "\r" in name:
+        raise ValueError("invalid name")
+    name = name.strip()
+    if not name or len(name) > 40:
+        raise ValueError("invalid name")
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    names = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    names.append(name)
+    path.write_text("\n".join(names) + "\n", encoding="utf-8")
+    return len(names)
 
 
 def take(path: str | Path) -> str:
-    """Remove and return the first name.
-
-    Raise LookupError when the file is missing or has no names.
-    """
-    raise NotImplementedError("TODO: remove the first line and return that name")
+    path = Path(path)
+    names = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    if not names:
+        raise LookupError("empty")
+    path.write_text("\n".join(names[1:]) + ("\n" if len(names) > 1 else ""), encoding="utf-8")
+    return names[0]

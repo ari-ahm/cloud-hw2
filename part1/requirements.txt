@@ -1,2 +1,1 @@
-# TODO: List at least one package so the pip install layer shows up in the build history.
-# Put the package name here and remove this comment.
+packaging==24.2

@@ -48,7 +48,8 @@ jobs:
           TZ: UTC
       - run: |
           docker build -t lab-queue:build part2
-          docker save -o /tmp/lab-queue.tar lab-queue:build
+          docker build -f part1/Dockerfile.slim -t cc-hello:slim part1
+          docker save -o /tmp/lab-queue.tar lab-queue:build cc-hello:slim
       - uses: actions/upload-artifact@v4
         with:
           name: queue-image
@@ -78,6 +79,9 @@ jobs:
           docker tag lab-queue:build "$image:latest"
           docker push "$image:$VERSION"
           docker push "$image:latest"
+          hello="ghcr.io/${OWNER,,}/cc-hello:slim"
+          docker tag cc-hello:slim "$hello"
+          docker push "$hello"
         env:
           OWNER: ${{ github.repository_owner }}
           VERSION: ${{ needs.build.outputs.version }}

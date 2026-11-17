@@ -14,8 +14,9 @@ The unsafe queue used in the race experiment is preserved at commit
 in a source archive without Git history. The corrected code uses a shared
 stable lock file and atomic replacement. The supplied tests are unchanged.
 
-The workflows in .github/workflows are prepared and validated locally.
-Public GitHub/Pages/GHCR runs have not been performed. Publishing is a
-separate step; the current code contains no account tokens or passwords.
-The report records actual local experiments and identifies pending public
-release evidence explicitly. The two optional bonus sections are omitted.
+The workflows in .github/workflows check every branch and main pull requests.
+A successful push to main publishes lab-queue to GHCR with an immutable
+release name and latest, publishes cc-hello:slim, deploys the static page,
+and creates an annotated Git tag. Both images are transferred from the
+build job as an artifact. See part2/README.md for manual tag deployment.
+The two optional bonus sections are omitted.

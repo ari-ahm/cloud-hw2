@@ -7,6 +7,8 @@ from pathlib import Path
 
 from app.queue import join, take
 
+# Shared queue mutations are serialized inside app.queue.
+
 
 class QueueServer(ThreadingHTTPServer):
     request_queue_size = 512
